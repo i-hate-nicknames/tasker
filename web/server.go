@@ -1,10 +1,18 @@
 package web
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
+	"github.com/i-hate-nicknames/tasker/db"
+)
+
+type ctxKey int
+
+const (
+	keyDb ctxKey = iota
 )
 
 func StartServer() {
@@ -47,7 +55,13 @@ func StartServer() {
 }
 
 func listProjects(w http.ResponseWriter, r *http.Request) {
+	db := r.Context().Value(keyDb)
+	if db == nil {
+		log.Println("no db sorry")
+		return
+	}
 
+	w.Write([]byte("there is a db for you!"))
 }
 
 func getProject(w http.ResponseWriter, r *http.Request) {
