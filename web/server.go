@@ -1,8 +1,10 @@
 package web
 
 import (
-	"log"
+	"encoding/json"
+	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
@@ -22,7 +24,7 @@ func StartServer() {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 
-	var db db.Database = &db.SqlDb{}
+	var db db.Database = db.MakeMemoryDb()
 	r.Use(middleware.WithValue(keyDb, db))
 
 	r.Route("/projects", func(r chi.Router) {
@@ -55,17 +57,39 @@ func StartServer() {
 }
 
 func listProjects(w http.ResponseWriter, r *http.Request) {
-	db := r.Context().Value(keyDb)
-	if db == nil {
-		log.Println("no db sorry")
+	db := r.Context().Value(keyDb).(db.Database)
+	projects, err := db.GetProjects()
+	if err != nil {
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-
-	w.Write([]byte("there is a db for you!"))
+	response, err := json.Marshal(projects)
+	if err != nil {
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	w.Write(response)
 }
 
 func getProject(w http.ResponseWriter, r *http.Request) {
-
+	projectID := chi.URLParam(r, "projectID")
+	ID, err := strconv.Atoi(projectID)
+	if err != nil {
+		http.Error(w, "project id must be an int", http.StatusBadRequest)
+		return
+	}
+	db := r.Context().Value(keyDb).(db.Database)
+	project, err := db.GetProject(ID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("project %d not found", ID), http.StatusNotFound)
+		return
+	}
+	response, err := json.Marshal(project)
+	if err != nil {
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	w.Write(response)
 }
 
 func createProject(w http.ResponseWriter, r *http.Request) {
