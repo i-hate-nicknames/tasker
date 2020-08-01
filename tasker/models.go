@@ -50,6 +50,7 @@ func MakeProject(owner *User, name, description string) *Project {
 	tasks := make([]*Task, 0)
 	cols := []*Column{{Position: 0, Tasks: tasks}}
 	p := &Project{Owner: owner, Columns: cols, Name: name, Description: description}
+	cols[0].Project = p
 	return p
 }
 
