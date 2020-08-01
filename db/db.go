@@ -35,7 +35,8 @@ func (db *SqlDb) DeleteProject(id int) error {
 }
 
 type MemoryDb struct {
-	projects []*tasker.Project
+	nextProjectID int
+	projects      []*tasker.Project
 }
 
 func MakeMemoryDb() *MemoryDb {
@@ -63,6 +64,18 @@ func (db *MemoryDb) GetProject(id int) (*tasker.Project, error) {
 	return nil, fmt.Errorf("get project: %w", ErrNotFound)
 }
 func (db *MemoryDb) SaveProject(p *tasker.Project) error {
+	if p.ID == 0 {
+		p.ID = db.nextProjectID
+		db.nextProjectID++
+		db.projects = append(db.projects, p)
+		return nil
+	}
+	for _, project := range db.projects {
+		if project.ID == p.ID {
+			project = p
+		}
+	}
+
 	return nil
 }
 func (db *MemoryDb) DeleteProject(id int) error {

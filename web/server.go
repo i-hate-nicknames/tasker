@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
 	"github.com/i-hate-nicknames/tasker/db"
+	"github.com/i-hate-nicknames/tasker/tasker"
 )
 
 type ctxKey int
@@ -91,12 +92,62 @@ func getProject(w http.ResponseWriter, r *http.Request) {
 	writeJson(w, project)
 }
 
-func createProject(w http.ResponseWriter, r *http.Request) {
+type projectRequest struct {
+	Name        string
+	Description string
+}
 
+func createProject(w http.ResponseWriter, r *http.Request) {
+	var req projectRequest
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	// todo: add validation library
+	if req.Name == "" || req.Description == "" {
+		http.Error(w, "Invalid request structure", http.StatusBadRequest)
+		return
+	}
+	db := r.Context().Value(keyDb).(db.Database)
+	// todo: probably move all this stuff to service layer, which should call db on its own
+	project := tasker.MakeProject(nil, req.Name, req.Description)
+	err = db.SaveProject(project)
+	if err != nil {
+		http.Error(w, "Failed to save project", http.StatusInternalServerError)
+		return
+	}
+	w.Write([]byte("ok"))
 }
 
 func updateProject(w http.ResponseWriter, r *http.Request) {
+	projectID := r.Context().Value(keyProjectId).(int)
+	db := r.Context().Value(keyDb).(db.Database)
+	project, err := db.GetProject(projectID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("project %d not found", projectID), http.StatusNotFound)
+		return
+	}
 
+	var req projectRequest
+	err = json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	// todo: add validation library
+	if req.Name == "" || req.Description == "" {
+		http.Error(w, "Invalid request structure", http.StatusBadRequest)
+		return
+	}
+	project.Name = req.Name
+	project.Description = req.Description
+	err = db.SaveProject(project)
+	if err != nil {
+		http.Error(w, "Failed to save project", http.StatusInternalServerError)
+		return
+	}
+	w.Write([]byte("ok"))
 }
 
 func deleteProject(w http.ResponseWriter, r *http.Request) {
@@ -126,7 +177,7 @@ func swapColumns(w http.ResponseWriter, r *http.Request) {
 func writeJson(w http.ResponseWriter, val interface{}) {
 	marshaled, err := json.Marshal(val)
 	if err != nil {
-		log.Printf("Error encoding to json %v\n", marshaled)
+		log.Printf("Error encoding to json %v, err: %s\n", marshaled, err.Error())
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
 	w.Write(marshaled)

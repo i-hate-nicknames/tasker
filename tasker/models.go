@@ -22,7 +22,7 @@ type Project struct {
 
 type Column struct {
 	Position int
-	Project  *Project
+	Project  *Project `json:"-"`
 	Tasks    []*Task
 	Name     string
 }
