@@ -1,51 +1,100 @@
 package db
 
 import (
-	"context"
+	"database/sql"
 	"fmt"
 	"log"
-	"os"
 	"time"
 
-	"github.com/jackc/pgx/v4/pgxpool"
+	_ "github.com/jackc/pgx/v4/stdlib"
 )
 
 func Run() {
-	pool, err := pgxpool.Connect(context.Background(), "postgresql://root:pass@localhost:8035/tasker")
+	db, err := sql.Open("pgx", "postgresql://root:pass@localhost:8035/tasker")
+	defer db.Close()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
-		os.Exit(1)
+		log.Fatal("failed to connect to db", err.Error())
 	}
-	// caller must close conn
-	defer pool.Close()
-
-	var greeting string
-	err = pool.QueryRow(context.Background(), "select 'Hello, world!'").Scan(&greeting)
+	err = db.Ping()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "QueryRow failed: %v\n", err)
-		os.Exit(1)
+		log.Fatal("failed to connect to db: ping")
 	}
 
-	err = Migrate(pool)
+	err = Migrate(db)
 	if err != nil {
-		log.Println("Error migrating", err.Error())
+		log.Fatal("failed to migrate", err.Error())
 	}
 
-	fmt.Println(greeting)
-}
+	err = InsertThings(db)
+	if err != nil {
+		log.Fatal("failed to insert things", err.Error())
+	}
 
-func Migrate(pool *pgxpool.Pool) error {
-	_, err := pool.Exec(context.Background(),
-		`CREATE TABLE IF NOT EXISTS Test (
-			id serial PRIMARY KEY,
-			name varchar(20) NOT NULL,
-			created date
-			);
-		`)
-	return err
+	things, err := GetThings(db)
+	if err != nil {
+		log.Fatal("failed to get things", err.Error())
+	}
+
+	for _, thing := range things {
+		log.Printf("%v\n", thing)
+	}
+
 }
 
 type Thing struct {
+	ID      int
 	Name    string
 	Created time.Time
+}
+
+func Migrate(db *sql.DB) error {
+	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS Test (
+                       id serial PRIMARY KEY,
+                       name varchar(20) NOT NULL,
+                       created timestamp
+                       );
+               `)
+	return err
+}
+
+func InsertThings(db *sql.DB) error {
+	stmt, err := db.Prepare("INSERT INTO test (name, created) VALUES($1, NOW())")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+	for i := 0; i < 10; i++ {
+		_, err = stmt.Exec(fmt.Sprintf("thing %d", i))
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func GetThings(db *sql.DB) ([]*Thing, error) {
+	rows, err := db.Query("SELECT * FROM test")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var (
+		id      int
+		name    string
+		created time.Time
+	)
+	things := make([]*Thing, 0)
+	for rows.Next() {
+		err := rows.Scan(&id, &name, &created)
+		if err != nil {
+			return nil, err
+		}
+		thing := &Thing{ID: id, Name: name, Created: created}
+		things = append(things, thing)
+	}
+	err = rows.Err()
+	if err != nil {
+		return nil, err
+	}
+	return things, nil
 }
